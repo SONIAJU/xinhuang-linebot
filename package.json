@@ -1,0 +1,23 @@
+{
+  "name": "xinhuang-linebot",
+  "version": "1.0.0",
+  "description": "鑫創小助手 LINE Bot - 整合請假、報價、請款、市集、進度、雲端功能",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@line/bot-sdk": "^9.4.0",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "googleapis": "^140.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
