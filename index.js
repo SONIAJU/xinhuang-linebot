@@ -10,6 +10,7 @@ const {
   getAttendRow, updateManagerResult, updateHRResult,
 } = require('./utils/sheets');
 
+const { addLeaveToCalendar } = require('./utils/calendar');
 const handleLeave    = require('./handlers/leave');
 const handleQuote    = require('./handlers/quote');
 const handlePayment  = require('./handlers/payment');
@@ -145,7 +146,7 @@ async function handlePostback(event, client) {
   }
 
   // 解構（對應新欄位順序）
-  const [, empName, empId, , leaveType, startDate, endDate] = rowData;
+  const [, empName, empId, , leaveType, startDate, endDate, , , , , reason, agent] = rowData;
   const resultLabel = action === 'approve' ? '核准' : '拒絕';
 
   try {
@@ -169,6 +170,12 @@ async function handlePostback(event, client) {
       await updateHRResult(rowIdx, resultLabel);
 
       if (action === 'approve') {
+        // 同步到 Google Calendar
+        try {
+          await addLeaveToCalendar({ name: empName, leaveType, startDate, endDate, reason, agent });
+        } catch (e) {
+          console.error('[Calendar] 新增失敗:', e.message);
+        }
         await pushLine(empId, { type: 'text', text: `✅ 您的請假申請已核准！\n假別：${leaveType}\n日期：${startDate} ～ ${endDate}\n\n請假愉快！` });
         return client.replyMessage({ replyToken, messages: [{ type: 'text', text: `✅ 已核准 ${empName} 的請假申請並通知本人` }] });
       } else {
