@@ -1,44 +1,130 @@
 // handlers/leave.js - 請假審批模組
-// 觸發關鍵字：「假」
-// 範例指令：假 申請 / 假 查詢 / 假 審核
+// 觸發關鍵字：「假」→ 回傳 Flex Message 含 LIFF 連結
+
+const LIFF_URL = `https://liff.line.me/${process.env.LIFF_ID || '2009693582-DSh3EP6P'}`;
 
 async function handleLeave(event, client, text) {
   const replyToken = event.replyToken;
-  const userId = event.source.userId;
-  const subCommand = text.slice(1).trim(); // 去除「假」字後的內容
+  const subCommand = text.slice(1).trim();
 
-  let replyText = '';
-
-  if (!subCommand || subCommand === '說明') {
-    replyText =
-      '📋 請假審批功能\n\n' +
-      '指令說明：\n' +
-      '假 申請 [日期] [原因] → 提交請假申請\n' +
-      '假 查詢 → 查看我的請假紀錄\n' +
-      '假 審核 → 查看待審核清單（主管）\n\n' +
-      '範例：假 申請 2026/04/10 身體不適';
-    return client.replyMessage({ replyToken, messages: [{ type: 'text', text: replyText }] });
+  // 純「假」或「假 申請」→ 回傳 Flex Message 開啟 LIFF 表單
+  if (!subCommand || subCommand === '申請' || subCommand === '說明') {
+    return client.replyMessage({
+      replyToken,
+      messages: [buildLeaveFlexMessage()],
+    });
   }
 
-  if (subCommand.startsWith('申請')) {
-    const details = subCommand.slice(2).trim();
-    if (!details) {
-      replyText = '請填寫請假日期與原因\n範例：假 申請 2026/04/10 身體不適';
-    } else {
-      // TODO: 寫入 Google Sheets
-      replyText = `✅ 請假申請已提交！\n內容：${details}\n\n申請人：${userId}\n狀態：待審核`;
-    }
-  } else if (subCommand.startsWith('查詢')) {
+  // 文字指令：查詢、審核
+  let replyText = '';
+
+  if (subCommand.startsWith('查詢')) {
     // TODO: 從 Google Sheets 查詢該用戶的請假紀錄
     replyText = '📅 您的請假紀錄：\n（功能開發中，請稍後）';
   } else if (subCommand.startsWith('審核')) {
     // TODO: 從 Google Sheets 撈取待審核清單
     replyText = '📝 待審核請假清單：\n（功能開發中，請稍後）';
   } else {
-    replyText = '找不到此指令，輸入「假 說明」查看使用方式';
+    return client.replyMessage({
+      replyToken,
+      messages: [buildLeaveFlexMessage()],
+    });
   }
 
   return client.replyMessage({ replyToken, messages: [{ type: 'text', text: replyText }] });
+}
+
+function buildLeaveFlexMessage() {
+  return {
+    type: 'flex',
+    altText: '📋 請假申請',
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#7f77dd',
+        paddingAll: '20px',
+        contents: [
+          {
+            type: 'text',
+            text: '📋 請假申請',
+            color: '#ffffff',
+            size: 'xl',
+            weight: 'bold',
+          },
+          {
+            type: 'text',
+            text: '填寫線上表單，主管即時收到通知',
+            color: 'rgba(255,255,255,0.8)',
+            size: 'sm',
+            margin: 'sm',
+          },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'md',
+        paddingAll: '20px',
+        contents: [
+          {
+            type: 'box',
+            layout: 'vertical',
+            spacing: 'sm',
+            contents: [
+              buildInfoRow('🌴', '特休假 / 病假 / 事假 / 其他'),
+              buildInfoRow('📅', '填寫起訖日期'),
+              buildInfoRow('📝', '填寫請假原因'),
+              buildInfoRow('👥', '填寫代理人姓名'),
+            ],
+          },
+          { type: 'separator', margin: 'lg' },
+          {
+            type: 'text',
+            text: '送出後主管將收到 LINE 通知',
+            size: 'xs',
+            color: '#aaaaaa',
+            align: 'center',
+            margin: 'md',
+          },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: '16px',
+        paddingTop: '0px',
+        contents: [
+          {
+            type: 'button',
+            action: {
+              type: 'uri',
+              label: '開啟請假表單',
+              uri: LIFF_URL,
+            },
+            style: 'primary',
+            color: '#7f77dd',
+            height: 'md',
+            cornerRadius: '12px',
+          },
+        ],
+      },
+    },
+  };
+}
+
+function buildInfoRow(icon, text) {
+  return {
+    type: 'box',
+    layout: 'horizontal',
+    spacing: 'sm',
+    contents: [
+      { type: 'text', text: icon, size: 'sm', flex: 0 },
+      { type: 'text', text, size: 'sm', color: '#555555', flex: 1 },
+    ],
+  };
 }
 
 module.exports = handleLeave;

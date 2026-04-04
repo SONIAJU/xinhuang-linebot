@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>請假申請</title>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Microsoft JhengHei", "PingFang TC", sans-serif;
+      background: #f5f4fb;
+      min-height: 100vh;
+      color: #333;
+    }
+
+    /* ── 導覽列 ── */
+    .navbar {
+      background: #7f77dd;
+      color: white;
+      display: flex;
+      align-items: center;
+      padding: 14px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 10px rgba(127,119,221,0.35);
+    }
+    .navbar-back {
+      font-size: 22px;
+      cursor: pointer;
+      margin-right: 12px;
+      line-height: 1;
+      opacity: 0.9;
+    }
+    .navbar-title { font-size: 17px; font-weight: 700; letter-spacing: 0.5px; }
+
+    /* ── 表單容器 ── */
+    .form-container {
+      padding: 20px 16px 40px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      font-size: 13px;
+      color: #7f77dd;
+      font-weight: 700;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .form-group { margin-bottom: 22px; }
+
+    /* ── 假別按鈕 ── */
+    .leave-types {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .leave-type-btn {
+      padding: 13px 8px;
+      border: 2px solid #e0dff5;
+      border-radius: 12px;
+      background: white;
+      font-size: 14px;
+      font-weight: 600;
+      color: #888;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.18s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .leave-type-btn:active { transform: scale(0.97); }
+    .leave-type-btn.active {
+      border-color: #7f77dd;
+      background: #7f77dd;
+      color: white;
+      box-shadow: 0 3px 10px rgba(127,119,221,0.35);
+    }
+
+    /* ── 日期並排 ── */
+    .date-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .date-field label {
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 5px;
+      display: block;
+    }
+
+    /* ── 輸入框通用 ── */
+    input[type="date"],
+    input[type="text"],
+    textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid #e0dff5;
+      border-radius: 11px;
+      font-size: 14px;
+      background: white;
+      outline: none;
+      font-family: inherit;
+      color: #333;
+      transition: border-color 0.18s;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    input[type="date"]:focus,
+    input[type="text"]:focus,
+    textarea:focus { border-color: #7f77dd; box-shadow: 0 0 0 3px rgba(127,119,221,0.12); }
+    textarea { resize: none; height: 90px; line-height: 1.5; }
+    input::placeholder, textarea::placeholder { color: #c0bfcf; }
+
+    /* ── 申請人資訊卡 ── */
+    .user-card {
+      display: flex;
+      align-items: center;
+      background: white;
+      border: 1.5px solid #e0dff5;
+      border-radius: 11px;
+      padding: 12px 14px;
+      gap: 10px;
+    }
+    .user-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: #e8e6f8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .user-name { font-size: 14px; font-weight: 600; color: #444; }
+    .user-sub { font-size: 12px; color: #aaa; }
+
+    /* ── 送出按鈕 ── */
+    .submit-btn {
+      width: 100%;
+      padding: 16px;
+      background: #7f77dd;
+      color: white;
+      border: none;
+      border-radius: 13px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 14px rgba(127,119,221,0.4);
+      transition: opacity 0.18s, transform 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .submit-btn:active { opacity: 0.85; transform: scale(0.98); }
+    .submit-btn:disabled { background: #c9c7e8; box-shadow: none; cursor: not-allowed; }
+
+    /* ── 成功畫面 ── */
+    .success-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - 56px);
+      padding: 32px 24px;
+      text-align: center;
+      animation: fadeIn 0.4s ease;
+    }
+    .success-icon {
+      width: 90px;
+      height: 90px;
+      background: #e8f5e9;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 44px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 16px rgba(76,175,80,0.2);
+    }
+    .success-title { font-size: 21px; font-weight: 700; color: #2e7d32; margin-bottom: 8px; }
+    .success-sub { font-size: 14px; color: #999; line-height: 1.6; }
+    .success-close-btn {
+      margin-top: 28px;
+      padding: 13px 36px;
+      background: #7f77dd;
+      color: white;
+      border: none;
+      border-radius: 50px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  </style>
+</head>
+<body>
+
+  <!-- 導覽列 -->
+  <div class="navbar">
+    <span class="navbar-back" onclick="closeLiff()">&#8592;</span>
+    <span class="navbar-title">請假申請</span>
+  </div>
+
+  <!-- 表單 -->
+  <div id="formView">
+    <div class="form-container">
+
+      <!-- 申請人 -->
+      <div class="form-group">
+        <div class="section-label">申請人</div>
+        <div class="user-card">
+          <div class="user-avatar">👤</div>
+          <div>
+            <div class="user-name" id="displayName">載入中...</div>
+            <div class="user-sub">LINE 帳號</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 假別 -->
+      <div class="form-group">
+        <div class="section-label">假別</div>
+        <div class="leave-types">
+          <button class="leave-type-btn active" onclick="selectLeaveType(this,'特休假')">🌴 特休假</button>
+          <button class="leave-type-btn" onclick="selectLeaveType(this,'病假')">🏥 病假</button>
+          <button class="leave-type-btn" onclick="selectLeaveType(this,'事假')">📋 事假</button>
+          <button class="leave-type-btn" onclick="selectLeaveType(this,'其他')">📌 其他</button>
+        </div>
+      </div>
+
+      <!-- 日期 -->
+      <div class="form-group">
+        <div class="section-label">請假日期</div>
+        <div class="date-row">
+          <div class="date-field">
+            <label>開始日期</label>
+            <input type="date" id="startDate">
+          </div>
+          <div class="date-field">
+            <label>結束日期</label>
+            <input type="date" id="endDate">
+          </div>
+        </div>
+      </div>
+
+      <!-- 原因 -->
+      <div class="form-group">
+        <div class="section-label">請假原因</div>
+        <textarea id="reason" placeholder="請簡述請假原因..."></textarea>
+      </div>
+
+      <!-- 代理人 -->
+      <div class="form-group">
+        <div class="section-label">代理人姓名</div>
+        <input type="text" id="agent" placeholder="請輸入代理人姓名">
+      </div>
+
+      <button class="submit-btn" id="submitBtn" onclick="submitForm()">送出申請</button>
+    </div>
+  </div>
+
+  <!-- 成功畫面 -->
+  <div class="success-screen" id="successView">
+    <div class="success-icon">✅</div>
+    <div class="success-title">申請已送出！</div>
+    <div class="success-sub">待主管審核<br>結果將透過 LINE 通知您</div>
+    <button class="success-close-btn" onclick="closeLiff()">關閉視窗</button>
+  </div>
+
+  <script>
+    const LIFF_ID = '2009693582-DSh3EP6P';
+    let selectedLeaveType = '特休假';
+    let liffProfile = { userId: '', displayName: '未知用戶' };
+
+    // 預設今天日期
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('startDate').value = today;
+    document.getElementById('endDate').value = today;
+
+    function selectLeaveType(btn, type) {
+      document.querySelectorAll('.leave-type-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedLeaveType = type;
+    }
+
+    function closeLiff() {
+      try { liff.closeWindow(); } catch (e) { history.back(); }
+    }
+
+    async function submitForm() {
+      const startDate = document.getElementById('startDate').value;
+      const endDate   = document.getElementById('endDate').value;
+      const reason    = document.getElementById('reason').value.trim();
+      const agent     = document.getElementById('agent').value.trim();
+
+      if (!startDate || !endDate) return alert('請填寫請假日期');
+      if (endDate < startDate)    return alert('結束日期不能早於開始日期');
+      if (!reason)                return alert('請填寫請假原因');
+      if (!agent)                 return alert('請填寫代理人姓名');
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = '送出中...';
+
+      try {
+        const res = await fetch('/api/leave/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: liffProfile.userId,
+            displayName: liffProfile.displayName,
+            leaveType: selectedLeaveType,
+            startDate, endDate, reason, agent,
+          }),
+        });
+        if (!res.ok) throw new Error('server error');
+
+        document.getElementById('formView').style.display = 'none';
+        const sv = document.getElementById('successView');
+        sv.style.display = 'flex';
+      } catch (err) {
+        alert('送出失敗，請稍後再試');
+        btn.disabled = false;
+        btn.textContent = '送出申請';
+      }
+    }
+
+    // LIFF 初始化
+    (async () => {
+      try {
+        await liff.init({ liffId: LIFF_ID });
+        if (!liff.isLoggedIn()) { liff.login(); return; }
+        const profile = await liff.getProfile();
+        liffProfile.userId      = profile.userId;
+        liffProfile.displayName = profile.displayName;
+        document.getElementById('displayName').textContent = profile.displayName;
+      } catch (e) {
+        console.warn('LIFF init failed:', e);
+        document.getElementById('displayName').textContent = '（測試模式）';
+      }
+    })();
+  </script>
+</body>
+</html>
