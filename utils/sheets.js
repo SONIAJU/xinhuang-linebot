@@ -74,4 +74,31 @@ async function searchRows(sheetName, columnIndex, keyword) {
   return data.filter(row => row[columnIndex] && row[columnIndex].includes(keyword));
 }
 
-module.exports = { readSheet, appendRow, updateCell, searchRows };
+// ── 工作表欄位定義（供建立表頭參考）──────────────────────────
+// 請假紀錄：時間戳 | LINE UserId | 姓名 | 假別 | 開始日期 | 結束日期 | 原因 | 代理人 | 狀態
+// 加班紀錄：時間戳 | LINE UserId | 姓名 | 加班日期 | 加班時數 | 案名 | 加班原因 | 狀態
+// ───────────────────────────────────────────────────────────
+
+const SHEET_HEADERS = {
+  請假紀錄: ['時間戳', 'LINE UserId', '姓名', '假別', '開始日期', '結束日期', '原因', '代理人', '狀態'],
+  加班紀錄: ['時間戳', 'LINE UserId', '姓名', '加班日期', '加班時數(小時)', '案名', '加班原因', '狀態'],
+};
+
+/**
+ * 初始化工作表表頭（第一次使用時呼叫）
+ * @param {string} sheetName - '請假紀錄' 或 '加班紀錄'
+ */
+async function initSheetHeader(sheetName) {
+  const sheets = getSheetsClient();
+  const existing = await readSheet(`${sheetName}!A1:Z1`);
+  if (existing.length === 0) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: `${sheetName}!A1`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [SHEET_HEADERS[sheetName]] },
+    });
+  }
+}
+
+module.exports = { readSheet, appendRow, updateCell, searchRows, initSheetHeader, SHEET_HEADERS };

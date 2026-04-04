@@ -46,19 +46,55 @@ app.get('/liff/leave', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'leave-form.html'));
 });
 
-// ── 請假表單送出 API ──
+// ── 請假／加班表單送出 API ──
 app.post('/api/leave/submit', async (req, res) => {
-  const { userId, displayName, leaveType, startDate, endDate, reason, agent } = req.body;
+  const { leaveType, userId, displayName } = req.body;
+  if (!leaveType) return res.status(400).json({ error: '缺少 leaveType' });
 
-  if (!leaveType || !startDate || !endDate || !reason || !agent) {
-    return res.status(400).json({ error: '缺少必要欄位' });
-  }
+  const isOvertime = leaveType === '加班申請';
+  const managerId  = process.env.MANAGER_LINE_ID;
+  const token      = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const pushHeader = { Authorization: `Bearer ${token}` };
 
-  const managerId = process.env.MANAGER_LINE_ID;
+  let managerText, userConfirmText, sheetRow;
+  const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
 
-  // 推播通知給主管
-  if (managerId) {
-    const notifyText =
+  if (isOvertime) {
+    // ── 加班申請 ──
+    const { overtimeDate, overtimeHours, projectName, overtimeReason } = req.body;
+    if (!overtimeDate || !overtimeHours || !projectName || !overtimeReason)
+      return res.status(400).json({ error: '缺少加班必要欄位' });
+
+    managerText =
+      `⏰ 新加班申請通知\n` +
+      `${'─'.repeat(20)}\n` +
+      `👤 申請人：${displayName || '未知'}\n` +
+      `📅 加班日期：${overtimeDate}\n` +
+      `⏱️ 加班時數：${overtimeHours} 小時\n` +
+      `📁 案名：${projectName}\n` +
+      `📝 原因：${overtimeReason}\n` +
+      `${'─'.repeat(20)}\n` +
+      `請確認後回覆審核結果`;
+
+    userConfirmText =
+      `✅ 加班申請已送出！\n` +
+      `日期：${overtimeDate}\n` +
+      `時數：${overtimeHours} 小時\n` +
+      `案名：${projectName}\n\n` +
+      `待主管審核後將通知您結果。`;
+
+    // Google Sheets 寫入格式（加班工作表）
+    // TODO: 串接後啟用
+    // await appendRow('加班紀錄', [now, userId, displayName, overtimeDate, overtimeHours, projectName, overtimeReason, '待審核']);
+    sheetRow = [now, userId, displayName, overtimeDate, overtimeHours, projectName, overtimeReason, '待審核'];
+
+  } else {
+    // ── 請假申請 ──
+    const { startDate, endDate, reason, agent } = req.body;
+    if (!startDate || !endDate || !reason || !agent)
+      return res.status(400).json({ error: '缺少請假必要欄位' });
+
+    managerText =
       `📋 新請假申請通知\n` +
       `${'─'.repeat(20)}\n` +
       `👤 申請人：${displayName || '未知'}\n` +
@@ -69,30 +105,40 @@ app.post('/api/leave/submit', async (req, res) => {
       `${'─'.repeat(20)}\n` +
       `請確認後回覆審核結果`;
 
+    userConfirmText =
+      `✅ 請假申請已送出！\n` +
+      `假別：${leaveType}\n` +
+      `日期：${startDate} ～ ${endDate}\n\n` +
+      `待主管審核後將通知您結果。`;
+
+    // Google Sheets 寫入格式（請假工作表）
+    // TODO: 串接後啟用
+    // await appendRow('請假紀錄', [now, userId, displayName, leaveType, startDate, endDate, reason, agent, '待審核']);
+    sheetRow = [now, userId, displayName, leaveType, startDate, endDate, reason, agent, '待審核'];
+  }
+
+  console.log(`[${isOvertime ? '加班' : '請假'}] 申請人：${displayName}，資料：`, sheetRow);
+
+  // 推播通知主管
+  if (managerId) {
     try {
       await axios.post(
         'https://api.line.me/v2/bot/message/push',
-        { to: managerId, messages: [{ type: 'text', text: notifyText }] },
-        { headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
+        { to: managerId, messages: [{ type: 'text', text: managerText }] },
+        { headers: pushHeader }
       );
     } catch (err) {
-      console.error('推播主管通知失敗:', err.response?.data || err.message);
+      console.error('推播主管失敗:', err.response?.data || err.message);
     }
   }
 
-  // 回覆申請人確認訊息
+  // 推播確認給申請人
   if (userId) {
     try {
       await axios.post(
         'https://api.line.me/v2/bot/message/push',
-        {
-          to: userId,
-          messages: [{
-            type: 'text',
-            text: `✅ 請假申請已送出！\n假別：${leaveType}\n日期：${startDate} ～ ${endDate}\n\n待主管審核後將通知您結果。`,
-          }],
-        },
-        { headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
+        { to: userId, messages: [{ type: 'text', text: userConfirmText }] },
+        { headers: pushHeader }
       );
     } catch (err) {
       console.error('推播申請人確認失敗:', err.response?.data || err.message);
