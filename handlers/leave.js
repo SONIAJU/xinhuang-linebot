@@ -1,9 +1,13 @@
 // handlers/leave.js - 請假審批模組
 // 觸發關鍵字：「假」→ 回傳 Flex Message 含 LIFF 連結
 
-const LIFF_URL = `https://liff.line.me/${process.env.LIFF_ID || '2009693582-DSh3EP6P'}`;
+// 用函式取值，確保每次呼叫都讀到最新的環境變數
+const getLiffUrl = () =>
+  `https://liff.line.me/${process.env.LIFF_ID || '2009693582-DSh3EP6P'}`;
 
 async function handleLeave(event, client, text) {
+  console.log(`[Leave] ✅ handleLeave 觸發 | text="${text}" | userId=${event.source.userId}`);
+
   const replyToken = event.replyToken;
   const subCommand = text.slice(1).trim();
 
@@ -102,7 +106,7 @@ function buildLeaveFlexMessage() {
             action: {
               type: 'uri',
               label: '開啟請假表單',
-              uri: LIFF_URL,
+              uri: getLiffUrl(),
             },
             style: 'primary',
             color: '#7f77dd',

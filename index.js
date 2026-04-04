@@ -301,7 +301,12 @@ async function handleEvent(event, client) {
   if (event.type !== 'message' || event.message.type !== 'text') return;
 
   const text = event.message.text.trim();
-  if (text.startsWith('假')) return handleLeave(event, client, text);
+  console.log(`[Webhook] 收到訊息 | text="${text}" | userId=${event.source.userId}`);
+
+  if (text.startsWith('假')) {
+    console.log('[Webhook] → 路由至 handleLeave');
+    return handleLeave(event, client, text);
+  }
   if (text.startsWith('報')) return handleQuote(event, client, text);
   if (text.startsWith('款')) return handlePayment(event, client, text);
   if (text.startsWith('市')) return handleMarket(event, client, text);
