@@ -41,58 +41,38 @@ async function handleLeave(event, client, text) {
 function buildLeaveFlexMessage() {
   return {
     type: 'flex',
-    altText: '📋 請假申請',
+    altText: '請假申請',
     contents: {
       type: 'bubble',
-      size: 'mega',
       header: {
         type: 'box',
         layout: 'vertical',
         backgroundColor: '#7f77dd',
-        paddingAll: '16px',
         contents: [
           {
             type: 'text',
-            text: '請假審批',
-            color: '#ffffff',
-            size: 'lg',
+            text: '📋 請假審批',
             weight: 'bold',
+            size: 'lg',
+            color: '#ffffff',
           },
         ],
       },
       body: {
         type: 'box',
         layout: 'vertical',
-        spacing: 'md',
-        paddingAll: '20px',
         contents: [
           {
-            type: 'box',
-            layout: 'vertical',
-            spacing: 'sm',
-            contents: [
-              buildInfoRow('🌴', '特休假 / 病假 / 事假 / 其他'),
-              buildInfoRow('📅', '填寫起訖日期'),
-              buildInfoRow('📝', '填寫請假原因'),
-              buildInfoRow('👥', '填寫代理人姓名'),
-            ],
-          },
-          { type: 'separator', margin: 'lg' },
-          {
             type: 'text',
-            text: '送出後主管將收到 LINE 通知',
-            size: 'xs',
-            color: '#aaaaaa',
-            align: 'center',
-            margin: 'md',
+            text: '點下方按鈕開啟請假申請表單',
+            wrap: true,
+            color: '#555555',
           },
         ],
       },
       footer: {
         type: 'box',
         layout: 'vertical',
-        paddingAll: '16px',
-        paddingTop: '0px',
         contents: [
           {
             type: 'button',
@@ -103,24 +83,10 @@ function buildLeaveFlexMessage() {
             },
             style: 'primary',
             color: '#7f77dd',
-            height: 'md',
-            cornerRadius: '12px',
           },
         ],
       },
     },
-  };
-}
-
-function buildInfoRow(icon, text) {
-  return {
-    type: 'box',
-    layout: 'horizontal',
-    spacing: 'sm',
-    contents: [
-      { type: 'text', text: icon, size: 'sm', flex: 0 },
-      { type: 'text', text, size: 'sm', color: '#555555', flex: 1 },
-    ],
   };
 }
 
