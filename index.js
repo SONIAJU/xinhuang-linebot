@@ -61,8 +61,8 @@ app.post('/api/leave/submit', async (req, res) => {
 
   if (isOvertime) {
     // ── 加班申請 ──
-    const { overtimeDate, overtimeHours, projectName, overtimeReason } = req.body;
-    if (!overtimeDate || !overtimeHours || !projectName || !overtimeReason)
+    const { overtimeDate, overtimeStart, overtimeEnd, overtimeHours, projectName, overtimeReason } = req.body;
+    if (!overtimeDate || !overtimeStart || !overtimeEnd || !overtimeHours || !projectName || !overtimeReason)
       return res.status(400).json({ error: '缺少加班必要欄位' });
 
     managerText =
@@ -70,6 +70,7 @@ app.post('/api/leave/submit', async (req, res) => {
       `${'─'.repeat(20)}\n` +
       `👤 申請人：${displayName || '未知'}\n` +
       `📅 加班日期：${overtimeDate}\n` +
+      `🕐 加班時間：${overtimeStart} ～ ${overtimeEnd}\n` +
       `⏱️ 加班時數：${overtimeHours} 小時\n` +
       `📁 案名：${projectName}\n` +
       `📝 原因：${overtimeReason}\n` +
@@ -79,14 +80,14 @@ app.post('/api/leave/submit', async (req, res) => {
     userConfirmText =
       `✅ 加班申請已送出！\n` +
       `日期：${overtimeDate}\n` +
-      `時數：${overtimeHours} 小時\n` +
+      `時間：${overtimeStart} ～ ${overtimeEnd}（${overtimeHours} 小時）\n` +
       `案名：${projectName}\n\n` +
       `待主管審核後將通知您結果。`;
 
     // Google Sheets 寫入格式（加班工作表）
     // TODO: 串接後啟用
-    // await appendRow('加班紀錄', [now, userId, displayName, overtimeDate, overtimeHours, projectName, overtimeReason, '待審核']);
-    sheetRow = [now, userId, displayName, overtimeDate, overtimeHours, projectName, overtimeReason, '待審核'];
+    // await appendRow('加班紀錄', [now, userId, displayName, overtimeDate, overtimeStart, overtimeEnd, overtimeHours, projectName, overtimeReason, '待審核']);
+    sheetRow = [now, userId, displayName, overtimeDate, overtimeStart, overtimeEnd, overtimeHours, projectName, overtimeReason, '待審核'];
 
   } else {
     // ── 請假申請 ──

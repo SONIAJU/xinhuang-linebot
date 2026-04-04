@@ -118,6 +118,7 @@
 
     /* ── 輸入框通用 ── */
     input[type="date"],
+    input[type="time"],
     input[type="text"],
     input[type="number"],
     textarea {
@@ -135,6 +136,7 @@
       -webkit-appearance: none;
     }
     input[type="date"]:focus,
+    input[type="time"]:focus,
     input[type="text"]:focus,
     input[type="number"]:focus,
     textarea:focus {
@@ -143,6 +145,15 @@
     }
     textarea { resize: none; height: 90px; line-height: 1.5; }
     input::placeholder, textarea::placeholder { color: #c0bfcf; }
+
+    /* 唯讀欄位（自動計算）*/
+    input[readonly] {
+      background: #f0eff9;
+      color: #888;
+      cursor: default;
+      border-color: #e0dff5;
+    }
+    input[readonly]:focus { box-shadow: none; border-color: #e0dff5; }
 
     /* 時數輸入：帶單位標籤 */
     .input-with-unit {
@@ -318,9 +329,23 @@
           </div>
 
           <div class="form-group">
-            <div class="section-label">加班時數</div>
+            <div class="section-label">加班時間</div>
+            <div class="date-row">
+              <div class="date-field">
+                <label>開始時間</label>
+                <input type="time" id="overtimeStart" oninput="calcOvertimeHours()">
+              </div>
+              <div class="date-field">
+                <label>結束時間</label>
+                <input type="time" id="overtimeEnd" oninput="calcOvertimeHours()">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="section-label">加班時數（自動計算）</div>
             <div class="input-with-unit">
-              <input type="number" id="overtimeHours" min="0.5" max="24" step="0.5" placeholder="例：2.5">
+              <input type="number" id="overtimeHours" readonly placeholder="填入時間後自動計算">
               <span class="input-unit">小時</span>
             </div>
           </div>
@@ -377,6 +402,23 @@
       document.getElementById('overtimeFields').classList.toggle('hidden', !isOvertime);
     }
 
+    /* ── 自動計算加班時數 ── */
+    function calcOvertimeHours() {
+      const startVal = document.getElementById('overtimeStart').value;
+      const endVal   = document.getElementById('overtimeEnd').value;
+      if (!startVal || !endVal) return;
+
+      const [sh, sm] = startVal.split(':').map(Number);
+      const [eh, em] = endVal.split(':').map(Number);
+      let diffMin = (eh * 60 + em) - (sh * 60 + sm);
+
+      // 跨夜：結束時間早於開始時間，補 24 小時
+      if (diffMin <= 0) diffMin += 24 * 60;
+
+      const hours = Math.round(diffMin / 60 * 10) / 10; // 保留一位小數
+      document.getElementById('overtimeHours').value = hours;
+    }
+
     function closeLiff() {
       try { liff.closeWindow(); } catch (e) { history.back(); }
     }
@@ -389,12 +431,15 @@
 
       if (isOvertime) {
         const overtimeDate   = document.getElementById('overtimeDate').value;
+        const overtimeStart  = document.getElementById('overtimeStart').value;
+        const overtimeEnd    = document.getElementById('overtimeEnd').value;
         const overtimeHours  = document.getElementById('overtimeHours').value;
         const projectName    = document.getElementById('projectName').value.trim();
         const overtimeReason = document.getElementById('overtimeReason').value.trim();
 
         if (!overtimeDate)                        return alert('請填寫加班日期');
-        if (!overtimeHours || +overtimeHours <= 0) return alert('請填寫加班時數');
+        if (!overtimeStart || !overtimeEnd)        return alert('請填寫加班開始與結束時間');
+        if (!overtimeHours || +overtimeHours <= 0) return alert('加班時數計算異常，請重新填寫時間');
         if (!projectName)                          return alert('請填寫案名');
         if (!overtimeReason)                       return alert('請填寫加班原因');
 
@@ -402,7 +447,7 @@
           userId: liffProfile.userId,
           displayName: liffProfile.displayName,
           leaveType: '加班申請',
-          overtimeDate, overtimeHours, projectName, overtimeReason,
+          overtimeDate, overtimeStart, overtimeEnd, overtimeHours, projectName, overtimeReason,
         };
       } else {
         const startDate = document.getElementById('startDate').value;
