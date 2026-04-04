@@ -1,104 +1,134 @@
-// utils/sheets.js - Google Sheets 工具模組
+// utils/sheets.js - Google Sheets 讀寫工具
 const { google } = require('googleapis');
 
-const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
+// ── 工作表設定 ────────────────────────────────────────────────
+const LEAVE_SHEET  = '請假紀錄';
+const LEAVE_HEADER = [
+  '申請時間', '員工姓名', '員工LINE ID', '假別',
+  '開始日期', '結束日期', '請假原因',  '代理人',
+  '主管審核結果', 'HR審核結果',
+];
 
-function getAuthClient() {
-  const auth = new google.auth.JWT({
-    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    scopes: SCOPES,
-  });
-  return auth;
-}
-
-function getSheetsClient() {
-  const auth = getAuthClient();
-  return google.sheets({ version: 'v4', auth });
-}
-
-/**
- * 讀取指定範圍的資料
- * @param {string} range - 例如 'Sheet1!A1:E10'
- * @returns {Array} 二維陣列資料
- */
-async function readSheet(range) {
-  const sheets = getSheetsClient();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.GOOGLE_SHEET_ID,
-    range,
-  });
-  return res.data.values || [];
-}
-
-/**
- * 在指定工作表末尾新增一行資料
- * @param {string} sheetName - 工作表名稱，例如 '請假紀錄'
- * @param {Array} rowData - 一維陣列，例如 ['2026/04/10', '王小明', '身體不適']
- */
-async function appendRow(sheetName, rowData) {
-  const sheets = getSheetsClient();
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: process.env.GOOGLE_SHEET_ID,
-    range: `${sheetName}!A1`,
-    valueInputOption: 'USER_ENTERED',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: { values: [rowData] },
-  });
-}
-
-/**
- * 更新指定儲存格的值
- * @param {string} range - 例如 'Sheet1!C5'
- * @param {string} value - 要寫入的值
- */
-async function updateCell(range, value) {
-  const sheets = getSheetsClient();
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: process.env.GOOGLE_SHEET_ID,
-    range,
-    valueInputOption: 'USER_ENTERED',
-    requestBody: { values: [[value]] },
-  });
-}
-
-/**
- * 依關鍵字搜尋某工作表的特定欄位
- * @param {string} sheetName - 工作表名稱
- * @param {number} columnIndex - 要搜尋的欄位索引（0-based）
- * @param {string} keyword - 搜尋關鍵字
- * @returns {Array} 符合的列資料
- */
-async function searchRows(sheetName, columnIndex, keyword) {
-  const data = await readSheet(`${sheetName}!A:Z`);
-  return data.filter(row => row[columnIndex] && row[columnIndex].includes(keyword));
-}
-
-// ── 工作表欄位定義（供建立表頭參考）──────────────────────────
-// 請假紀錄：時間戳 | LINE UserId | 姓名 | 假別 | 開始日期 | 結束日期 | 原因 | 代理人 | 狀態
-// 加班紀錄：時間戳 | LINE UserId | 姓名 | 加班日期 | 加班時數 | 案名 | 加班原因 | 狀態
-// ───────────────────────────────────────────────────────────
-
-const SHEET_HEADERS = {
-  請假紀錄: ['時間戳', 'LINE UserId', '姓名', '假別', '開始日期', '結束日期', '原因', '代理人', '狀態'],
-  加班紀錄: ['時間戳', 'LINE UserId', '姓名', '加班日期', '加班時數(小時)', '案名', '加班原因', '狀態'],
+// 欄位索引（0-based）← 對應 LEAVE_HEADER 順序
+const COL = {
+  TIME:           0,
+  NAME:           1,
+  USER_ID:        2,
+  LEAVE_TYPE:     3,
+  START_DATE:     4,
+  END_DATE:       5,
+  REASON:         6,
+  AGENT:          7,
+  MANAGER_RESULT: 8,  // 欄 I
+  HR_RESULT:      9,  // 欄 J
 };
 
-/**
- * 初始化工作表表頭（第一次使用時呼叫）
- * @param {string} sheetName - '請假紀錄' 或 '加班紀錄'
- */
-async function initSheetHeader(sheetName) {
-  const sheets = getSheetsClient();
-  const existing = await readSheet(`${sheetName}!A1:Z1`);
-  if (existing.length === 0) {
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: process.env.GOOGLE_SHEET_ID,
-      range: `${sheetName}!A1`,
+// ── 認證 ──────────────────────────────────────────────────────
+function getAuth() {
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY 未設定');
+  const creds = JSON.parse(raw);
+  return new google.auth.JWT({
+    email: creds.client_email,
+    key:   creds.private_key,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+}
+
+const api = () => google.sheets({ version: 'v4', auth: getAuth() });
+const sid = () => {
+  const id = process.env.GOOGLE_SHEETS_ID;
+  if (!id) throw new Error('GOOGLE_SHEETS_ID 未設定');
+  return id;
+};
+
+// ── 內部工具 ──────────────────────────────────────────────────
+// 確保工作表第一列為表頭（首次使用時自動建立）
+async function ensureLeaveHeader() {
+  const res = await api().spreadsheets.values.get({
+    spreadsheetId: sid(),
+    range: `${LEAVE_SHEET}!A1:J1`,
+  });
+  if (!res.data.values?.length) {
+    await api().spreadsheets.values.update({
+      spreadsheetId: sid(),
+      range: `${LEAVE_SHEET}!A1`,
       valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [SHEET_HEADERS[sheetName]] },
+      requestBody: { values: [LEAVE_HEADER] },
     });
   }
 }
 
-module.exports = { readSheet, appendRow, updateCell, searchRows, initSheetHeader, SHEET_HEADERS };
+// 將欄位索引轉為 A1 記法字母（0=A, 8=I, 9=J ...）
+function colLetter(index) {
+  return String.fromCharCode(65 + index);
+}
+
+// ── 公開 API ──────────────────────────────────────────────────
+
+/**
+ * 新增請假紀錄，回傳寫入的列號（int）。
+ * 若寫入失敗則拋出例外。
+ */
+async function appendLeaveRow({ time, name, userId, leaveType, startDate, endDate, reason, agent }) {
+  await ensureLeaveHeader();
+  const row = [
+    time, name, userId, leaveType,
+    startDate, endDate, reason, agent,
+    '待審核', '待審核',
+  ];
+  const res = await api().spreadsheets.values.append({
+    spreadsheetId: sid(),
+    range: `${LEAVE_SHEET}!A:J`,
+    valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody: { values: [row] },
+  });
+  // updatedRange 格式：「請假紀錄!A5:J5」→ 取列號 5
+  const match = (res.data.updates?.updatedRange || '').match(/A(\d+)/);
+  if (!match) throw new Error('無法解析寫入列號');
+  return parseInt(match[1]);
+}
+
+/**
+ * 讀取指定列的請假資料，回傳字串陣列（對應 LEAVE_HEADER 順序）。
+ */
+async function getLeaveRow(rowIndex) {
+  const res = await api().spreadsheets.values.get({
+    spreadsheetId: sid(),
+    range: `${LEAVE_SHEET}!A${rowIndex}:J${rowIndex}`,
+  });
+  return res.data.values?.[0] || null;
+}
+
+/**
+ * 更新主管審核結果（欄 I = COL.MANAGER_RESULT）
+ * @param {number} rowIndex - 列號
+ * @param {'核准'|'拒絕'} result
+ */
+async function updateManagerResult(rowIndex, result) {
+  const col = colLetter(COL.MANAGER_RESULT);
+  await api().spreadsheets.values.update({
+    spreadsheetId: sid(),
+    range: `${LEAVE_SHEET}!${col}${rowIndex}`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [[result]] },
+  });
+}
+
+/**
+ * 更新 HR 審核結果（欄 J = COL.HR_RESULT）
+ * @param {number} rowIndex - 列號
+ * @param {'核准'|'拒絕'} result
+ */
+async function updateHRResult(rowIndex, result) {
+  const col = colLetter(COL.HR_RESULT);
+  await api().spreadsheets.values.update({
+    spreadsheetId: sid(),
+    range: `${LEAVE_SHEET}!${col}${rowIndex}`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [[result]] },
+  });
+}
+
+module.exports = { appendLeaveRow, getLeaveRow, updateManagerResult, updateHRResult, COL };
