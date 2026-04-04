@@ -198,11 +198,18 @@ app.get('/liff/leave', (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'leave-form.html'))
 );
 
+// 電腦版請假表單（不需要 LIFF）
+app.get('/leave', (req, res) =>
+  res.sendFile(path.join(__dirname, 'public', 'leave-web.html'))
+);
+
 // ════════════════════════════════════════════════════════════
 //  請假／加班表單送出 API
 // ════════════════════════════════════════════════════════════
 app.post('/api/leave/submit', async (req, res) => {
-  const { leaveType, userId, displayName } = req.body;
+  const { leaveType, displayName } = req.body;
+  // LIFF 版（手機）帶 userId；網頁版（電腦）沒有 userId
+  const userId = req.body.userId || '網頁填寫';
   if (!leaveType) return res.status(400).json({ error: '缺少 leaveType' });
 
   const isOvertime = leaveType === '加班申請';
@@ -287,14 +294,16 @@ app.post('/api/leave/submit', async (req, res) => {
     }
   }
 
-  // 3. 回覆申請人確認
-  try {
-    await pushLine(userId, {
-      type: 'text',
-      text: `✅ 請假申請已送出！\n假別：${leaveType}\n日期：${startDate} ～ ${endDate}\n\n待主管審核後將通知您結果。`,
-    });
-  } catch (e) {
-    console.error('[請假] 推播申請人失敗:', e.message);
+  // 3. 回覆申請人確認（網頁版無真實 LINE ID，跳過推播）
+  if (userId && userId !== '網頁填寫') {
+    try {
+      await pushLine(userId, {
+        type: 'text',
+        text: `✅ 請假申請已送出！\n假別：${leaveType}\n日期：${startDate} ～ ${endDate}\n\n待主管審核後將通知您結果。`,
+      });
+    } catch (e) {
+      console.error('[請假] 推播申請人失敗:', e.message);
+    }
   }
 
   res.json({ success: true });

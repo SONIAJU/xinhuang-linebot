@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>請假申請（電腦版）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Microsoft JhengHei", "PingFang TC", sans-serif;
+      background: #f5f4fb;
+      min-height: 100vh;
+      color: #333;
+    }
+
+    /* ── 導覽列 ── */
+    .navbar {
+      background: #7f77dd;
+      color: white;
+      display: flex;
+      align-items: center;
+      padding: 14px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 10px rgba(127,119,221,0.35);
+    }
+    .navbar-title {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── 表單容器 ── */
+    .form-container {
+      padding: 20px 16px 40px;
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      font-size: 13px;
+      color: #7f77dd;
+      font-weight: 700;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .form-group { margin-bottom: 22px; }
+
+    /* ── 假別按鈕：3+2 排列 ── */
+    .leave-types {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+    }
+    .leave-type-btn:nth-child(-n+3) { grid-column: span 2; }
+    .leave-type-btn:nth-child(n+4)  { grid-column: span 3; }
+
+    .leave-type-btn {
+      padding: 13px 8px;
+      border: 2px solid #e0dff5;
+      border-radius: 12px;
+      background: white;
+      font-size: 14px;
+      font-weight: 600;
+      color: #888;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.18s ease;
+    }
+    .leave-type-btn.active {
+      border-color: #7f77dd;
+      background: #7f77dd;
+      color: white;
+      box-shadow: 0 3px 10px rgba(127,119,221,0.35);
+    }
+
+    /* ── 欄位切換動畫 ── */
+    .field-section {
+      display: grid;
+      grid-template-rows: 1fr;
+      opacity: 1;
+      transition: grid-template-rows 0.32s ease, opacity 0.25s ease;
+    }
+    .field-section.hidden {
+      grid-template-rows: 0fr;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .field-section-inner { overflow: hidden; }
+
+    /* ── 日期並排 ── */
+    .date-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .date-field label {
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 5px;
+      display: block;
+    }
+
+    /* ── 輸入框通用 ── */
+    input[type="date"],
+    input[type="time"],
+    input[type="text"],
+    input[type="number"],
+    textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid #e0dff5;
+      border-radius: 11px;
+      font-size: 14px;
+      background: white;
+      outline: none;
+      font-family: inherit;
+      color: #333;
+      transition: border-color 0.18s, box-shadow 0.18s;
+    }
+    input[type="date"]:focus,
+    input[type="time"]:focus,
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    textarea:focus {
+      border-color: #7f77dd;
+      box-shadow: 0 0 0 3px rgba(127,119,221,0.12);
+    }
+    textarea { resize: none; height: 90px; line-height: 1.5; }
+    input::placeholder, textarea::placeholder { color: #c0bfcf; }
+
+    input[readonly] {
+      background: #f0eff9;
+      color: #888;
+      cursor: default;
+      border-color: #e0dff5;
+    }
+    input[readonly]:focus { box-shadow: none; border-color: #e0dff5; }
+
+    .input-with-unit { position: relative; }
+    .input-with-unit input { padding-right: 52px; }
+    .input-unit {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 13px;
+      color: #aaa;
+      pointer-events: none;
+    }
+
+    /* ── 送出按鈕 ── */
+    .submit-btn {
+      width: 100%;
+      padding: 16px;
+      background: #7f77dd;
+      color: white;
+      border: none;
+      border-radius: 13px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 14px rgba(127,119,221,0.4);
+      transition: opacity 0.18s, transform 0.15s;
+    }
+    .submit-btn:active  { opacity: 0.85; transform: scale(0.98); }
+    .submit-btn:disabled { background: #c9c7e8; box-shadow: none; cursor: not-allowed; }
+
+    /* ── 成功畫面 ── */
+    .success-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - 56px);
+      padding: 32px 24px;
+      text-align: center;
+      animation: fadeIn 0.4s ease;
+    }
+    .success-icon {
+      width: 90px; height: 90px;
+      background: #e8f5e9;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 44px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 16px rgba(76,175,80,0.2);
+    }
+    .success-title { font-size: 21px; font-weight: 700; color: #2e7d32; margin-bottom: 8px; }
+    .success-sub   { font-size: 14px; color: #999; line-height: 1.6; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 導覽列 -->
+  <div class="navbar">
+    <span class="navbar-title" id="navTitle">請假申請</span>
+  </div>
+
+  <!-- 表單 -->
+  <div id="formView">
+    <div class="form-container">
+
+      <!-- 員工姓名（手動輸入，取代 LIFF 自動取得）-->
+      <div class="form-group">
+        <div class="section-label">員工姓名</div>
+        <input type="text" id="displayName" placeholder="請輸入您的姓名">
+      </div>
+
+      <!-- 假別（3+2 排列） -->
+      <div class="form-group">
+        <div class="section-label">類別</div>
+        <div class="leave-types">
+          <button class="leave-type-btn active" onclick="selectType(this,'特休假')">🌴 特休假</button>
+          <button class="leave-type-btn"        onclick="selectType(this,'病假')">🏥 病假</button>
+          <button class="leave-type-btn"        onclick="selectType(this,'事假')">📋 事假</button>
+          <button class="leave-type-btn"        onclick="selectType(this,'其他')">📌 其他</button>
+          <button class="leave-type-btn"        onclick="selectType(this,'加班申請')">⏰ 加班申請</button>
+        </div>
+      </div>
+
+      <!-- ════ 請假欄位 ════ -->
+      <div id="leaveFields" class="field-section">
+        <div class="field-section-inner">
+
+          <div class="form-group">
+            <div class="section-label">請假日期</div>
+            <div class="date-row">
+              <div class="date-field">
+                <label>開始日期</label>
+                <input type="date" id="startDate">
+              </div>
+              <div class="date-field">
+                <label>結束日期</label>
+                <input type="date" id="endDate">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="section-label">請假原因</div>
+            <textarea id="reason" placeholder="請簡述請假原因..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <div class="section-label">代理人姓名</div>
+            <input type="text" id="agent" placeholder="請輸入代理人姓名">
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ════ 加班欄位 ════ -->
+      <div id="overtimeFields" class="field-section hidden">
+        <div class="field-section-inner">
+
+          <div class="form-group">
+            <div class="section-label">加班日期</div>
+            <input type="date" id="overtimeDate">
+          </div>
+
+          <div class="form-group">
+            <div class="section-label">加班時間</div>
+            <div class="date-row">
+              <div class="date-field">
+                <label>開始時間</label>
+                <input type="time" id="overtimeStart" oninput="calcOvertimeHours()">
+              </div>
+              <div class="date-field">
+                <label>結束時間</label>
+                <input type="time" id="overtimeEnd" oninput="calcOvertimeHours()">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="section-label">加班時數（自動計算）</div>
+            <div class="input-with-unit">
+              <input type="number" id="overtimeHours" readonly placeholder="填入時間後自動計算">
+              <span class="input-unit">小時</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="section-label">案名</div>
+            <input type="text" id="projectName" placeholder="請輸入案名">
+          </div>
+
+          <div class="form-group">
+            <div class="section-label">加班原因</div>
+            <textarea id="overtimeReason" placeholder="請簡述加班原因..."></textarea>
+          </div>
+
+        </div>
+      </div>
+
+      <button class="submit-btn" id="submitBtn" onclick="submitForm()">送出申請</button>
+    </div>
+  </div>
+
+  <!-- 成功畫面 -->
+  <div class="success-screen" id="successView">
+    <div class="success-icon">✅</div>
+    <div class="success-title" id="successTitle">申請已送出！</div>
+    <div class="success-sub">待主管審核<br>結果將透過 LINE 通知您</div>
+  </div>
+
+  <script>
+    let selectedType = '特休假';
+
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('startDate').value    = today;
+    document.getElementById('endDate').value      = today;
+    document.getElementById('overtimeDate').value = today;
+
+    function selectType(btn, type) {
+      document.querySelectorAll('.leave-type-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedType = type;
+
+      const isOvertime = type === '加班申請';
+      document.getElementById('navTitle').textContent = isOvertime ? '加班申請' : '請假申請';
+      document.getElementById('leaveFields').classList.toggle('hidden', isOvertime);
+      document.getElementById('overtimeFields').classList.toggle('hidden', !isOvertime);
+    }
+
+    function calcOvertimeHours() {
+      const startVal = document.getElementById('overtimeStart').value;
+      const endVal   = document.getElementById('overtimeEnd').value;
+      if (!startVal || !endVal) return;
+
+      const [sh, sm] = startVal.split(':').map(Number);
+      const [eh, em] = endVal.split(':').map(Number);
+      let diffMin = (eh * 60 + em) - (sh * 60 + sm);
+      if (diffMin <= 0) diffMin += 24 * 60;
+
+      document.getElementById('overtimeHours').value = Math.round(diffMin / 60 * 10) / 10;
+    }
+
+    async function submitForm() {
+      const btn         = document.getElementById('submitBtn');
+      const displayName = document.getElementById('displayName').value.trim();
+      const isOvertime  = selectedType === '加班申請';
+      let payload;
+
+      if (!displayName) return alert('請填寫員工姓名');
+
+      if (isOvertime) {
+        const overtimeDate   = document.getElementById('overtimeDate').value;
+        const overtimeStart  = document.getElementById('overtimeStart').value;
+        const overtimeEnd    = document.getElementById('overtimeEnd').value;
+        const overtimeHours  = document.getElementById('overtimeHours').value;
+        const projectName    = document.getElementById('projectName').value.trim();
+        const overtimeReason = document.getElementById('overtimeReason').value.trim();
+
+        if (!overtimeDate)                         return alert('請填寫加班日期');
+        if (!overtimeStart || !overtimeEnd)         return alert('請填寫加班開始與結束時間');
+        if (!overtimeHours || +overtimeHours <= 0)  return alert('加班時數計算異常，請重新填寫時間');
+        if (!projectName)                           return alert('請填寫案名');
+        if (!overtimeReason)                        return alert('請填寫加班原因');
+
+        payload = {
+          displayName,
+          leaveType: '加班申請',
+          overtimeDate, overtimeStart, overtimeEnd, overtimeHours, projectName, overtimeReason,
+        };
+      } else {
+        const startDate = document.getElementById('startDate').value;
+        const endDate   = document.getElementById('endDate').value;
+        const reason    = document.getElementById('reason').value.trim();
+        const agent     = document.getElementById('agent').value.trim();
+
+        if (!startDate || !endDate) return alert('請填寫請假日期');
+        if (endDate < startDate)    return alert('結束日期不能早於開始日期');
+        if (!reason)                return alert('請填寫請假原因');
+        if (!agent)                 return alert('請填寫代理人姓名');
+
+        payload = {
+          displayName,
+          leaveType: selectedType,
+          startDate, endDate, reason, agent,
+        };
+      }
+
+      btn.disabled = true;
+      btn.textContent = '送出中...';
+
+      try {
+        const res = await fetch('/api/leave/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error('server error');
+
+        document.getElementById('formView').style.display = 'none';
+        document.getElementById('successTitle').textContent =
+          isOvertime ? '加班申請已送出！' : '請假申請已送出！';
+        document.getElementById('successView').style.display = 'flex';
+      } catch (err) {
+        alert('送出失敗，請稍後再試');
+        btn.disabled = false;
+        btn.textContent = '送出申請';
+      }
+    }
+  </script>
+</body>
+</html>

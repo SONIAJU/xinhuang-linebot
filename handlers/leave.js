@@ -15,7 +15,13 @@ async function handleLeave(event, client, text) {
   if (!subCommand || subCommand === '申請' || subCommand === '說明') {
     return client.replyMessage({
       replyToken,
-      messages: [buildLeaveFlexMessage()],
+      messages: [
+        buildLeaveFlexMessage(),
+        {
+          type: 'text',
+          text: '💻 電腦版用戶請複製以下連結到瀏覽器開啟：\nhttps://xinhuang-linebot.onrender.com/leave',
+        },
+      ],
     });
   }
 
