@@ -61,7 +61,7 @@ function buildLeaveFlexMessage() {
           {
             type: 'text',
             text: '填寫線上表單，主管即時收到通知',
-            color: 'rgba(255,255,255,0.8)',
+            color: '#ffffffcc',
             size: 'sm',
             margin: 'sm',
           },
