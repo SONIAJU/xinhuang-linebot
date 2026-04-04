@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const line = require('@line/bot-sdk');
+const setupRichMenu = require('./scripts/setupRichMenu');
 
 const handleLeave = require('./handlers/leave');
 const handleQuote = require('./handlers/quote');
@@ -63,4 +64,8 @@ async function handleEvent(event, client) {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`鑫創小助手 LINE Bot 啟動於 port ${PORT}`);
+  // 首次啟動時自動建立圖文選單（已存在則跳過）
+  setupRichMenu().catch(err =>
+    console.error('圖文選單初始化失敗:', err.response?.data || err.message)
+  );
 });
