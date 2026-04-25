@@ -30,7 +30,7 @@ const client = new line.messagingApi.MessagingApiClient({
 const app = express();
 
 // ════════════════════════════════════════════════════════════
-//  Webhook（LINE middleware 需要 raw body，必須在 express.json 前）
+//  Webhook
 // ════════════════════════════════════════════════════════════
 app.post('/webhook', line.middleware(config), (req, res) => {
   Promise.all(req.body.events.map(event => handleEvent(event, client)))
@@ -55,7 +55,6 @@ async function pushLine(to, messages) {
   );
 }
 
-// Flex Message：一行 label + value
 function flexRow(label, value) {
   return {
     type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
@@ -66,26 +65,22 @@ function flexRow(label, value) {
   };
 }
 
-/**
- * 建立請假審核 Flex Message
- * rowData 欄位對應 utils/sheets.js 的 COL 索引：
- *   [0]時間 [1]姓名 [2]userId [3]類型 [4]假別
- *   [5]開始日 [6]結束日 [7]開始時 [8]結束時 [9]時數
- *   [10]案名 [11]原因 [12]代理人 [13]主管審核 [14]HR審核
- */
+// ════════════════════════════════════════════════════════════
+//  建立請假審核 Flex Message
+// ════════════════════════════════════════════════════════════
 function buildApprovalFlex(title, role, rowData, rowIndex) {
   const [time, name, , , leaveType, startDate, endDate, , , , , reason, agent, managerResult] = rowData;
 
   const bodyRows = [
     flexRow('👤 申請人', name),
     flexRow('📌 假別',   leaveType),
-    flexRow('📅 日期',   `${startDate} ～ ${endDate}`),
+    flexRow('📅 日期',   `${startDate} ~ ${endDate}`),
     flexRow('📝 原因',   reason),
     flexRow('👥 代理人', agent),
   ];
   if (role === 'hr') bodyRows.push(flexRow('主管審核', `✅ ${managerResult}`));
   bodyRows.push({ type: 'separator', margin: 'lg' });
-  bodyRows.push(flexRow('🕐 申請時間', time));
+  bodyRows.push(flexRow('申請時間', time));
 
   return {
     type: 'flex',
@@ -119,6 +114,55 @@ function buildApprovalFlex(title, role, rowData, rowIndex) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  ★ 新增：建立加班審核 Flex Message（橘色主題）
+// ════════════════════════════════════════════════════════════
+function buildOvertimeApprovalFlex(title, role, rowData, rowIndex) {
+  const [time, name, , , , overtimeDate, , overtimeStart, overtimeEnd, overtimeHours, projectName, overtimeReason, , managerResult] = rowData;
+
+  const bodyRows = [
+    flexRow('👤 申請人',   name),
+    flexRow('📅 加班日期', overtimeDate),
+    flexRow('🕐 加班時間', `${overtimeStart} ~ ${overtimeEnd}`),
+    flexRow('⏱️ 加班時數', `${overtimeHours} 小時`),
+    flexRow('📁 案名',     projectName),
+    flexRow('📝 原因',     overtimeReason),
+  ];
+  if (role === 'hr') bodyRows.push(flexRow('主管審核', `✅ ${managerResult}`));
+  bodyRows.push({ type: 'separator', margin: 'lg' });
+  bodyRows.push(flexRow('申請時間', time));
+
+  return {
+    type: 'flex',
+    altText: title,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical',
+        backgroundColor: '#E67E22', paddingAll: '18px',
+        contents: [{ type: 'text', text: title, color: '#ffffff', size: 'lg', weight: 'bold' }],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '18px',
+        contents: bodyRows,
+      },
+      footer: {
+        type: 'box', layout: 'horizontal', spacing: 'sm', paddingAll: '16px',
+        contents: [
+          {
+            type: 'button', style: 'primary', color: '#27AE60', flex: 1, height: 'sm',
+            action: { type: 'postback', label: '✅ 同意', data: `action=approve&role=${role}&row=${rowIndex}&type=overtime`, displayText: '同意' },
+          },
+          {
+            type: 'button', style: 'primary', color: '#E74C3C', flex: 1, height: 'sm',
+            action: { type: 'postback', label: '❌ 拒絕', data: `action=reject&role=${role}&row=${rowIndex}&type=overtime`, displayText: '拒絕' },
+          },
+        ],
+      },
+    },
+  };
+}
+
+// ════════════════════════════════════════════════════════════
 //  Postback 處理（主管 / HR 審核按鈕）
 // ════════════════════════════════════════════════════════════
 async function handlePostback(event, client) {
@@ -126,6 +170,7 @@ async function handlePostback(event, client) {
   const action = params.get('action'); // 'approve' | 'reject'
   const role   = params.get('role');   // 'manager' | 'hr'
   const rowIdx = parseInt(params.get('row'));
+  const type   = params.get('type');   // 'overtime' | null（請假）
 
   if (!['approve', 'reject'].includes(action)) return;
   if (!['manager', 'hr'].includes(role)) return;
@@ -133,7 +178,6 @@ async function handlePostback(event, client) {
 
   const replyToken = event.replyToken;
 
-  // 從 Sheets 讀出該列資料
   let rowData;
   try {
     rowData = await getAttendRow(rowIdx);
@@ -145,11 +189,49 @@ async function handlePostback(event, client) {
     return client.replyMessage({ replyToken, messages: [{ type: 'text', text: '找不到對應的申請資料' }] });
   }
 
-  // 解構（對應新欄位順序）
-  const [, empName, empId, , leaveType, startDate, endDate, , , , , reason, agent] = rowData;
   const resultLabel = action === 'approve' ? '核准' : '拒絕';
 
   try {
+    // ════════════════════════════════════════════════════════
+    //  ★ 加班審核分流
+    // ════════════════════════════════════════════════════════
+    if (type === 'overtime') {
+      const [, empName, empId, , , overtimeDate, , overtimeStart, overtimeEnd, overtimeHours, projectName, overtimeReason] = rowData;
+
+      if (role === 'manager') {
+        await updateManagerResult(rowIdx, resultLabel);
+
+        if (action === 'approve') {
+          const hrId = process.env.HR_LINE_ID;
+          if (hrId) {
+            await pushLine(hrId, buildOvertimeApprovalFlex('⏰ 加班申請 - 待 HR 審核', 'hr', rowData, rowIdx));
+          } else {
+            console.warn('[Postback] HR_LINE_ID 未設定');
+          }
+          return client.replyMessage({ replyToken, messages: [{ type: 'text', text: `✅ 已同意 ${empName} 的加班申請，已轉交 HR 審核` }] });
+        } else {
+          await pushLine(empId, { type: 'text', text: `❌ 您的加班申請已被主管拒絕\n日期：${overtimeDate}\n時間：${overtimeStart} ~ ${overtimeEnd}\n\n如有疑問請洽主管` });
+          return client.replyMessage({ replyToken, messages: [{ type: 'text', text: `已拒絕 ${empName} 的加班申請並通知本人` }] });
+        }
+
+      } else { // role === 'hr'
+        await updateHRResult(rowIdx, resultLabel);
+
+        if (action === 'approve') {
+          await pushLine(empId, { type: 'text', text: `✅ 您的加班申請已核准！\n日期：${overtimeDate}\n時間：${overtimeStart} ~ ${overtimeEnd}（${overtimeHours} 小時）\n案名：${projectName}\n\n辛苦了！` });
+          return client.replyMessage({ replyToken, messages: [{ type: 'text', text: `✅ 已核准 ${empName} 的加班申請並通知本人` }] });
+        } else {
+          await pushLine(empId, { type: 'text', text: `❌ 您的加班申請已被 HR 拒絕\n日期：${overtimeDate}\n時間：${overtimeStart} ~ ${overtimeEnd}\n\n如有疑問請洽 HR` });
+          return client.replyMessage({ replyToken, messages: [{ type: 'text', text: `已拒絕 ${empName} 的加班申請並通知本人` }] });
+        }
+      }
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  請假審核（原邏輯不動）
+    // ════════════════════════════════════════════════════════
+    const [, empName, empId, , leaveType, startDate, endDate, , , , , reason, agent] = rowData;
+
     if (role === 'manager') {
       await updateManagerResult(rowIdx, resultLabel);
 
@@ -162,27 +244,27 @@ async function handlePostback(event, client) {
         }
         return client.replyMessage({ replyToken, messages: [{ type: 'text', text: `✅ 已同意 ${empName} 的請假申請，已轉交 HR 審核` }] });
       } else {
-        await pushLine(empId, { type: 'text', text: `❌ 您的請假申請已被主管拒絕\n假別：${leaveType}\n日期：${startDate} ～ ${endDate}\n\n如有疑問請洽主管` });
+        await pushLine(empId, { type: 'text', text: `❌ 您的請假申請已被主管拒絕\n假別：${leaveType}\n日期：${startDate} ~ ${endDate}\n\n如有疑問請洽主管` });
         return client.replyMessage({ replyToken, messages: [{ type: 'text', text: `已拒絕 ${empName} 的請假申請並通知本人` }] });
       }
 
-    } else {
+    } else { // role === 'hr'
       await updateHRResult(rowIdx, resultLabel);
 
       if (action === 'approve') {
-        // 同步到 Google Calendar
         try {
           await addLeaveToCalendar({ name: empName, leaveType, startDate, endDate, reason, agent });
         } catch (e) {
           console.error('[Calendar] 新增失敗:', e.message);
         }
-        await pushLine(empId, { type: 'text', text: `✅ 您的請假申請已核准！\n假別：${leaveType}\n日期：${startDate} ～ ${endDate}\n\n請假愉快！` });
+        await pushLine(empId, { type: 'text', text: `✅ 您的請假申請已核准！\n假別：${leaveType}\n日期：${startDate} ~ ${endDate}\n\n請假愉快！` });
         return client.replyMessage({ replyToken, messages: [{ type: 'text', text: `✅ 已核准 ${empName} 的請假申請並通知本人` }] });
       } else {
-        await pushLine(empId, { type: 'text', text: `❌ 您的請假申請已被 HR 拒絕\n假別：${leaveType}\n日期：${startDate} ～ ${endDate}\n\n如有疑問請洽 HR` });
+        await pushLine(empId, { type: 'text', text: `❌ 您的請假申請已被 HR 拒絕\n假別：${leaveType}\n日期：${startDate} ~ ${endDate}\n\n如有疑問請洽 HR` });
         return client.replyMessage({ replyToken, messages: [{ type: 'text', text: `已拒絕 ${empName} 的請假申請並通知本人` }] });
       }
     }
+
   } catch (e) {
     console.error('[Postback] 審核處理失敗:', e.message);
     return client.replyMessage({ replyToken, messages: [{ type: 'text', text: '操作失敗，請稍後再試' }] });
@@ -198,7 +280,6 @@ app.get('/liff/leave', (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'leave-form.html'))
 );
 
-// 電腦版請假表單（不需要 LIFF）
 app.get('/leave', (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'leave-web.html'))
 );
@@ -208,7 +289,6 @@ app.get('/leave', (req, res) =>
 // ════════════════════════════════════════════════════════════
 app.post('/api/leave/submit', async (req, res) => {
   const { leaveType, displayName } = req.body;
-  // LIFF 版（手機）帶 userId；網頁版（電腦）沒有 userId
   const userId = req.body.userId || '網頁填寫';
   if (!leaveType) return res.status(400).json({ error: '缺少 leaveType' });
 
@@ -221,9 +301,10 @@ app.post('/api/leave/submit', async (req, res) => {
     if (!overtimeDate || !overtimeStart || !overtimeEnd || !overtimeHours || !projectName || !overtimeReason)
       return res.status(400).json({ error: '缺少加班必要欄位' });
 
-    // 寫入 Sheets（淡橘色列）
+    // 1. 寫入 Sheets
+    let idx = null;
     try {
-      const idx = await appendOvertimeRow({
+      idx = await appendOvertimeRow({
         time: now, name: displayName || '未知', userId,
         overtimeDate, overtimeStart, overtimeEnd, overtimeHours, projectName, overtimeReason,
       });
@@ -232,24 +313,33 @@ app.post('/api/leave/submit', async (req, res) => {
       console.error('[加班] Sheets 寫入失敗:', e.message);
     }
 
-    // 文字通知主管
-    const managerText =
-      `⏰ 新加班申請通知\n${'─'.repeat(20)}\n` +
-      `👤 申請人：${displayName || '未知'}\n` +
-      `📅 加班日期：${overtimeDate}\n` +
-      `🕐 加班時間：${overtimeStart} ～ ${overtimeEnd}\n` +
-      `⏱️ 加班時數：${overtimeHours} 小時\n` +
-      `📁 案名：${projectName}\n` +
-      `📝 原因：${overtimeReason}\n` +
-      `${'─'.repeat(20)}\n請確認後回覆審核結果`;
+    // 2. ★ 通知主管（Flex Message + 審核按鈕）
+    const overtimeRowData = [
+      now, displayName || '未知', userId, '加班申請',
+      '',
+      overtimeDate, overtimeDate,
+      overtimeStart, overtimeEnd,
+      overtimeHours, projectName,
+      overtimeReason,
+      '',
+      '待審核', '待審核',
+    ];
+    const managerId = process.env.MANAGER_LINE_ID;
+    if (managerId && idx) {
+      try {
+        await pushLine(managerId, buildOvertimeApprovalFlex('⏰ 新加班申請通知', 'manager', overtimeRowData, idx));
+      } catch (e) { console.error('[加班] 推播主管失敗:', e.message); }
+    }
 
-    try { await pushLine(process.env.MANAGER_LINE_ID, { type: 'text', text: managerText }); } catch (e) {}
-    try {
-      await pushLine(userId, {
-        type: 'text',
-        text: `✅ 加班申請已送出！\n日期：${overtimeDate}\n時間：${overtimeStart} ～ ${overtimeEnd}（${overtimeHours} 小時）\n案名：${projectName}\n\n待主管審核後將通知您結果。`,
-      });
-    } catch (e) {}
+    // 3. 通知申請人已送出
+    if (userId && userId !== '網頁填寫') {
+      try {
+        await pushLine(userId, {
+          type: 'text',
+          text: `✅ 加班申請已送出！\n日期：${overtimeDate}\n時間：${overtimeStart} ~ ${overtimeEnd}（${overtimeHours} 小時）\n案名：${projectName}\n\n待主管審核後將通知您結果。`,
+        });
+      } catch (e) {}
+    }
 
     return res.json({ success: true });
   }
@@ -259,7 +349,7 @@ app.post('/api/leave/submit', async (req, res) => {
   if (!startDate || !endDate || !reason || !agent)
     return res.status(400).json({ error: '缺少請假必要欄位' });
 
-  // 1. 寫入 Sheets（淡黃色列），取得列號
+  // 1. 寫入 Sheets
   let rowIndex = null;
   try {
     rowIndex = await appendLeaveRow({
@@ -271,10 +361,9 @@ app.post('/api/leave/submit', async (req, res) => {
     console.error('[請假] Sheets 寫入失敗:', e.message);
   }
 
-  // 2. 推播主管 Flex Message（含同意/拒絕按鈕）
+  // 2. 推播主管 Flex Message
   const managerId = process.env.MANAGER_LINE_ID;
   if (managerId) {
-    // 構造與 Sheets 欄位順序一致的 rowData（15欄）
     const rowData = [
       now, displayName || '未知', userId, '請假申請',
       leaveType, startDate, endDate, '', '', '', '', reason, agent,
@@ -286,7 +375,7 @@ app.post('/api/leave/submit', async (req, res) => {
       } else {
         await pushLine(managerId, {
           type: 'text',
-          text: `📋 新請假申請（⚠️ 審核按鈕暫不可用）\n申請人：${displayName}\n假別：${leaveType}\n日期：${startDate} ～ ${endDate}\n原因：${reason}\n代理人：${agent}`,
+          text: `📋 新請假申請（審核按鈕暫不可用）\n申請人：${displayName}\n假別：${leaveType}\n日期：${startDate} ~ ${endDate}\n原因：${reason}\n代理人：${agent}`,
         });
       }
     } catch (e) {
@@ -294,12 +383,12 @@ app.post('/api/leave/submit', async (req, res) => {
     }
   }
 
-  // 3. 回覆申請人確認（網頁版無真實 LINE ID，跳過推播）
+  // 3. 回覆申請人確認
   if (userId && userId !== '網頁填寫') {
     try {
       await pushLine(userId, {
         type: 'text',
-        text: `✅ 請假申請已送出！\n假別：${leaveType}\n日期：${startDate} ～ ${endDate}\n\n待主管審核後將通知您結果。`,
+        text: `✅ 請假申請已送出！\n假別：${leaveType}\n日期：${startDate} ~ ${endDate}\n\n待主管審核後將通知您結果。`,
       });
     } catch (e) {
       console.error('[請假] 推播申請人失敗:', e.message);
