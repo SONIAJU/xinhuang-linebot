@@ -261,9 +261,122 @@ async function updateHRResult(rowIndex, result) {
   });
 }
 
+// ════════════════════════════════════════════════════════════
+//  每日進度紀錄（每位員工獨立分頁，欄位與「進度記錄」一致）
+// ════════════════════════════════════════════════════════════
+const PROGRESS_BG = rgb(204, 229, 255); // #CCE5FF 淡藍
+// 欄位順序對應現有「進度記錄」sheet：日期/姓名/案件名稱/狀態/待辦事項/回報時間
+const PROGRESS_HEADER = ['日期', '姓名', '案件名稱', '狀態', '待辦事項', '回報時間'];
+const PROGRESS_COL_COUNT = 6;
+
+// 快取：分頁標題 → gid（避免重複查詢）
+const _progressSheetCache = {};
+
+/**
+ * 取得或自動建立員工專屬進度分頁（分頁名稱 = 員工姓名）
+ * @returns {{ title: string, gid: number }}
+ */
+async function getOrCreateProgressSheet(employeeName) {
+  const title = employeeName; // 直接用姓名當分頁名
+
+  if (_progressSheetCache[title] !== undefined) {
+    return { title, gid: _progressSheetCache[title] };
+  }
+
+  // 查詢現有分頁
+  const spreadsheet = await getApi().spreadsheets.get({ spreadsheetId: getSid() });
+  const found = spreadsheet.data.sheets.find(s => s.properties.title === title);
+
+  if (found) {
+    _progressSheetCache[title] = found.properties.sheetId;
+    return { title, gid: found.properties.sheetId };
+  }
+
+  // 建立新分頁
+  const addRes = await getApi().spreadsheets.batchUpdate({
+    spreadsheetId: getSid(),
+    requestBody: { requests: [{ addSheet: { properties: { title } } }] },
+  });
+  const newGid = addRes.data.replies[0].addSheet.properties.sheetId;
+  _progressSheetCache[title] = newGid;
+
+  // 寫入標題列
+  await getApi().spreadsheets.values.update({
+    spreadsheetId: getSid(),
+    range: `${title}!A1`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [PROGRESS_HEADER] },
+  });
+
+  // 標題列樣式：深紫底白字粗體
+  await getApi().spreadsheets.batchUpdate({
+    spreadsheetId: getSid(),
+    requestBody: {
+      requests: [{
+        repeatCell: {
+          range: {
+            sheetId: newGid,
+            startRowIndex: 0, endRowIndex: 1,
+            startColumnIndex: 0, endColumnIndex: PROGRESS_COL_COUNT,
+          },
+          cell: {
+            userEnteredFormat: {
+              backgroundColor: C.HEADER_BG,
+              textFormat: { foregroundColor: C.HEADER_FG, bold: true },
+            },
+          },
+          fields: 'userEnteredFormat(backgroundColor,textFormat)',
+        },
+      }],
+    },
+  });
+
+  return { title, gid: newGid };
+}
+
+/**
+ * 新增一筆進度紀錄至員工個人分頁（每個案件一行）
+ * @param {{ time, name, date, projectName, status, items }} param
+ */
+async function appendProgressRow({ time, name, date, projectName, status, items }) {
+  const { title, gid } = await getOrCreateProgressSheet(name);
+  const todoText = Array.isArray(items) ? items.join('\n') : (items || '');
+
+  const res = await getApi().spreadsheets.values.append({
+    spreadsheetId: getSid(),
+    range: `${title}!A:F`,
+    valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody: { values: [[date, name, projectName, status, todoText, time]] },
+  });
+
+  const rowIndex = parseRowIndex(res.data.updates?.updatedRange);
+
+  // 列底色（淡藍）
+  await getApi().spreadsheets.batchUpdate({
+    spreadsheetId: getSid(),
+    requestBody: {
+      requests: [{
+        repeatCell: {
+          range: {
+            sheetId: gid,
+            startRowIndex: rowIndex - 1, endRowIndex: rowIndex,
+            startColumnIndex: 0, endColumnIndex: PROGRESS_COL_COUNT,
+          },
+          cell: { userEnteredFormat: { backgroundColor: PROGRESS_BG } },
+          fields: 'userEnteredFormat.backgroundColor',
+        },
+      }],
+    },
+  });
+
+  return rowIndex;
+}
+
 module.exports = {
   appendLeaveRow,
   appendOvertimeRow,
+  appendProgressRow,
   getAttendRow,
   updateManagerResult,
   updateHRResult,

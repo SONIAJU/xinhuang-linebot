@@ -15,7 +15,7 @@ const handleLeave    = require('./handlers/leave');
 const handleQuote    = require('./handlers/quote');
 const handlePayment  = require('./handlers/payment');
 const handleMarket   = require('./handlers/market');
-const handleProgress = require('./handlers/progress');
+const { handleProgress, handleProgressReport } = require('./handlers/progress');
 const handleCloud    = require('./handlers/cloud');
 
 const config = {
@@ -40,6 +40,7 @@ app.post('/webhook', line.middleware(config), (req, res) => {
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/downloads', express.static(path.join(__dirname, 'public', 'downloads')));
 
 // ════════════════════════════════════════════════════════════
 //  工具函式
@@ -417,6 +418,10 @@ async function handleEvent(event, client) {
   if (text.startsWith('市')) return handleMarket(event, client, text);
   if (text.startsWith('進')) return handleProgress(event, client, text);
   if (text.startsWith('雲')) return handleCloud(event, client, text);
+  // 員工直接貼【已定案】/【未定案】/【結案】格式（不需前綴）
+  if (text.includes('【已定案】') || text.includes('【未定案】') || text.includes('【結案】')) {
+    return handleProgressReport(event, client, text);
+  }
 
   return client.replyMessage({
     replyToken: event.replyToken,
@@ -428,9 +433,22 @@ async function handleEvent(event, client) {
 //  啟動
 // ════════════════════════════════════════════════════════════
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`鑫創小助手 LINE Bot 啟動於 port ${PORT}`);
-  setupRichMenu().catch(err =>
-    console.error('圖文選單初始化失敗:', err.response?.data || err.message)
-  );
+
+  // 圖文選單：只在不存在時才建立（不 force），避免每次重部署重建造成亂碼
+  try {
+    await setupRichMenu(false);
+  } catch (e) {
+    console.error('[RichMenu] 初始化失敗:', e.message);
+  }
+
+  // 每 4 分鐘自我 ping，防止 Render 免費版休眠
+  const BASE_URL = process.env.BASE_URL;
+  if (BASE_URL) {
+    setInterval(() => {
+      axios.get(BASE_URL).catch(() => {});
+    }, 4 * 60 * 1000);
+    console.log(`自動保持喚醒：每 4 分鐘 ping ${BASE_URL}`);
+  }
 });
