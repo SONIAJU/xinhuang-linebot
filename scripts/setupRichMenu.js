@@ -4,7 +4,6 @@ require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const { createCanvas } = require('@napi-rs/canvas');
 
 const TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const BASE_URL = 'https://api.line.me/v2/bot';
@@ -24,8 +23,9 @@ const CELLS = [
   { col: 2, row: 1, char: '雲', label: '雲端資料夾', color: '#C0392B' },
 ];
 
-// 產生圖文選單 PNG（6色方塊 + 中文文字）
+// 產生圖文選單 PNG（6色方塊 + 中文文字）- 只在本機有字型時使用
 function generatePng() {
+  const { createCanvas } = require('@napi-rs/canvas');
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
 
