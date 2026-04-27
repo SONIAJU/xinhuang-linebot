@@ -148,7 +148,7 @@ async function appendRow(rowData) {
   const res = await getApi().spreadsheets.values.append({
     spreadsheetId: getSid(),
     range: `${SHEET}!A:O`,
-    valueInputOption: 'USER_ENTERED',
+    valueInputOption: 'RAW',       // ← 改這裡
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values: [rowData] },
   });
