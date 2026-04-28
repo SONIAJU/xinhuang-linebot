@@ -33,9 +33,9 @@ const app = express();
 //  Webhook
 // ════════════════════════════════════════════════════════════
 app.post('/webhook', line.middleware(config), (req, res) => {
+  res.status(200).json({ status: 'ok' }); // 立刻回 200，防止 LINE 重試觸發重複審核
   Promise.all(req.body.events.map(event => handleEvent(event, client)))
-    .then(() => res.status(200).json({ status: 'ok' }))
-    .catch(err => { console.error('Webhook error:', err); res.status(500).end(); });
+    .catch(err => console.error('Webhook error:', err));
 });
 
 app.use(express.json());
@@ -216,6 +216,12 @@ async function handlePostback(event, client) {
         }
 
       } else { // role === 'hr'
+        const hrResult = rowData[14]; // O 欄：HR審核
+        if (hrResult && hrResult !== '待審核') {
+          console.warn(`[Postback] HR 重複審核攔截，列 ${rowIdx} 已有結果：${hrResult}`);
+          return;
+        }
+
         await updateHRResult(rowIdx, resultLabel);
 
         if (action === 'approve') {
@@ -250,6 +256,12 @@ async function handlePostback(event, client) {
       }
 
     } else { // role === 'hr'
+      const hrResult = rowData[14]; // O 欄：HR審核
+      if (hrResult && hrResult !== '待審核') {
+        console.warn(`[Postback] HR 重複審核攔截，列 ${rowIdx} 已有結果：${hrResult}`);
+        return;
+      }
+
       await updateHRResult(rowIdx, resultLabel);
 
       if (action === 'approve') {
